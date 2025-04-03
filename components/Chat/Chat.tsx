@@ -1,13 +1,5 @@
 import { IconClearAll, IconSettings } from '@tabler/icons-react';
-import {
-  MutableRefObject,
-  memo,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { MutableRefObject, memo, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 
 
@@ -25,11 +17,7 @@ import { throttle } from '@/utils/data/throttle';
 import { ChatBody, Conversation, Message } from '@/types/chat';
 import { Plugin } from '@/types/plugin';
 
-
-
 import HomeContext from '@/pages/api/home/home.context';
-
-
 
 import Spinner from '../Spinner';
 import { ChatInput } from './ChatInput';
@@ -78,6 +66,11 @@ export const Chat = memo(({ stopConversationRef }: Props) => {
   const handleSend = useCallback(
     async (message: Message, deleteCount = 0, plugin: Plugin | null = null) => {
       if (selectedConversation) {
+        let startTime: number = 0;
+        let firstTokenTime: number = 0;
+        let endTime: number = 0;
+        let totalTokens = 0;
+
         let updatedConversation: Conversation;
         if (deleteCount) {
           const updatedMessages = [...selectedConversation.messages];
@@ -160,6 +153,9 @@ export const Chat = memo(({ stopConversationRef }: Props) => {
           let done = false;
           let isFirst = true;
           let text = '';
+
+          startTime = performance.now();
+
           while (!done) {
             if (stopConversationRef.current === true) {
               controller.abort();
@@ -170,7 +166,9 @@ export const Chat = memo(({ stopConversationRef }: Props) => {
             done = doneReading;
             const chunkValue = decoder.decode(value);
             text += chunkValue;
+
             if (isFirst) {
+              firstTokenTime = performance.now();
               isFirst = false;
               const updatedMessages: Message[] = [
                 ...updatedConversation.messages,
@@ -185,6 +183,8 @@ export const Chat = memo(({ stopConversationRef }: Props) => {
                 value: updatedConversation,
               });
             } else {
+              totalTokens += chunkValue.split(/\s+/).length;
+
               const updatedMessages: Message[] =
                 updatedConversation.messages.map((message, index) => {
                   if (index === updatedConversation.messages.length - 1) {
@@ -205,6 +205,17 @@ export const Chat = memo(({ stopConversationRef }: Props) => {
               });
             }
           }
+
+          endTime = performance.now();
+          const ttft = ((firstTokenTime - startTime) / 1000).toFixed(2);
+          const totalTime = (endTime - firstTokenTime) / 1000;
+          const tps = Math.round(totalTokens / totalTime);
+
+          const performanceMetrics = `\nTTFT: ${ttft} seconds, TPS: ${tps} tokens/second`;
+          const lastMessageIndex = updatedConversation.messages.length - 1;
+          updatedConversation.messages[lastMessageIndex].content +=
+            performanceMetrics;
+
           saveConversation(updatedConversation);
           const updatedConversations: Conversation[] = conversations.map(
             (conversation) => {
