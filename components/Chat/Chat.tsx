@@ -1,14 +1,8 @@
 import { IconClearAll, IconSettings } from '@tabler/icons-react';
-import {
-  MutableRefObject,
-  memo,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { MutableRefObject, memo, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
+
+
 
 import { useTranslation } from 'next-i18next';
 
@@ -29,10 +23,11 @@ import Spinner from '../Spinner';
 import { ChatInput } from './ChatInput';
 import { ChatLoader } from './ChatLoader';
 import { ErrorMessageDiv } from './ErrorMessageDiv';
+import { MaxTokensSlider } from './MaxTokens';
+import { MemoizedChatMessage } from './MemoizedChatMessage';
 import { ModelSelect } from './ModelSelect';
 import { SystemPrompt } from './SystemPrompt';
 import { TemperatureSlider } from './Temperature';
-import { MemoizedChatMessage } from './MemoizedChatMessage';
 
 interface Props {
   stopConversationRef: MutableRefObject<boolean>;
@@ -71,6 +66,11 @@ export const Chat = memo(({ stopConversationRef }: Props) => {
   const handleSend = useCallback(
     async (message: Message, deleteCount = 0, plugin: Plugin | null = null) => {
       if (selectedConversation) {
+        let startTime: number = 0;
+        let firstTokenTime: number = 0;
+        let endTime: number = 0;
+        let totalTokens = 0;
+
         let updatedConversation: Conversation;
         if (deleteCount) {
           const updatedMessages = [...selectedConversation.messages];
@@ -99,6 +99,7 @@ export const Chat = memo(({ stopConversationRef }: Props) => {
           key: apiKey,
           prompt: updatedConversation.prompt,
           temperature: updatedConversation.temperature,
+          maxTokens: updatedConversation.maxTokens,
         };
         const endpoint = getEndpoint(plugin);
         let body;
@@ -152,6 +153,9 @@ export const Chat = memo(({ stopConversationRef }: Props) => {
           let done = false;
           let isFirst = true;
           let text = '';
+
+          startTime = performance.now();
+
           while (!done) {
             if (stopConversationRef.current === true) {
               controller.abort();
@@ -162,7 +166,9 @@ export const Chat = memo(({ stopConversationRef }: Props) => {
             done = doneReading;
             const chunkValue = decoder.decode(value);
             text += chunkValue;
+
             if (isFirst) {
+              firstTokenTime = performance.now();
               isFirst = false;
               const updatedMessages: Message[] = [
                 ...updatedConversation.messages,
@@ -177,6 +183,8 @@ export const Chat = memo(({ stopConversationRef }: Props) => {
                 value: updatedConversation,
               });
             } else {
+              totalTokens += chunkValue.split(/\s+/).length;
+
               const updatedMessages: Message[] =
                 updatedConversation.messages.map((message, index) => {
                   if (index === updatedConversation.messages.length - 1) {
@@ -197,6 +205,17 @@ export const Chat = memo(({ stopConversationRef }: Props) => {
               });
             }
           }
+
+          endTime = performance.now();
+          const ttft = ((firstTokenTime - startTime) / 1000).toFixed(2);
+          const totalTime = (endTime - firstTokenTime) / 1000;
+          const tps = Math.round(totalTokens / totalTime);
+
+          const performanceMetrics = `\nTTFT: ${ttft} seconds, TPS: ${tps} tokens/second`;
+          const lastMessageIndex = updatedConversation.messages.length - 1;
+          updatedConversation.messages[lastMessageIndex].content +=
+            performanceMetrics;
+
           saveConversation(updatedConversation);
           const updatedConversations: Conversation[] = conversations.map(
             (conversation) => {
@@ -251,6 +270,7 @@ export const Chat = memo(({ stopConversationRef }: Props) => {
       pluginKeys,
       selectedConversation,
       stopConversationRef,
+      homeDispatch,
     ],
   );
 
@@ -433,6 +453,16 @@ export const Chat = memo(({ stopConversationRef }: Props) => {
                           })
                         }
                       />
+
+                      <MaxTokensSlider
+                        label={t('Max Tokens')}
+                        onChangeMaxTokens={(maxTokens) =>
+                          handleUpdateConversation(selectedConversation, {
+                            key: 'maxTokens',
+                            value: maxTokens,
+                          })
+                        }
+                      />
                     </div>
                   )}
                 </div>
@@ -440,8 +470,8 @@ export const Chat = memo(({ stopConversationRef }: Props) => {
             ) : (
               <>
                 <div className="sticky top-0 z-10 flex justify-center border border-b-neutral-300 bg-neutral-100 py-2 text-sm text-neutral-500 dark:border-none dark:bg-[#444654] dark:text-neutral-200">
-                  {t('Model')}: {selectedConversation?.model?.name} | {t('Temp')}
-                  : {selectedConversation?.temperature} |
+                  {t('Model')}: {selectedConversation?.model?.name} |{' '}
+                  {t('Temp')}: {selectedConversation?.temperature} |
                   <button
                     className="ml-2 cursor-pointer hover:opacity-50"
                     onClick={handleSettings}

@@ -1,5 +1,6 @@
 import { OpenAIModel } from './openai';
 
+
 export interface Message {
   role: Role;
   content: string;
@@ -13,6 +14,7 @@ export interface ChatBody {
   key: string;
   prompt: string;
   temperature: number;
+  maxTokens: number;
 }
 
 export interface Conversation {
@@ -22,5 +24,6 @@ export interface Conversation {
   model: OpenAIModel | null;
   prompt: string;
   temperature: number;
+  maxTokens: number;
   folderId: string | null;
 }
